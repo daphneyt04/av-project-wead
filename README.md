@@ -49,3 +49,5 @@ Range for cmd_accel = [-3.0, 1.5] | Can go to -6.0 in specific instances
     - (Vn = anything, Sn = undefined, Vn-1 = undefined)
     - Does controller react if no inputs?
 * 2.10
+
+# AI Usage
