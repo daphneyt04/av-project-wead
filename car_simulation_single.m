@@ -4,12 +4,12 @@ clear; clc;
 
 % ----------------------- parameters -----------------------
 alpha = 1.5;      % [1/s^2]
-tau   = 0.5;      % [s] % headway
+tau   = 3;      % [s] % headway
 dt    = 0.1;      % [s]
 T     = 30;       % [s] duration
 t     = 0:dt:(T - dt);
 
-PLOT_EACH = false;   % set false to skip plotting per-scenario
+PLOT_EACH = true;   % set false to skip plotting per-scenario
 SAVE_FIGS = false;  % set true to save figures (PNG) in current folder
 
 % ----------------------- scenarios ------------------------
@@ -226,7 +226,7 @@ function a = accel_trace(v_ego, s, alpha, tau)
     a = alpha .* (s - v_ego .* tau);
 end
 
-function a = accel_policy(vn, sn, rel_v, alpha, tau)
+function a = wead_controller_accel_policy(vn, sn, rel_v, alpha, tau)
 %ACCEL_POLICY Commanded acceleration based on ego speed, gap, and relative speed.
 %
 % Inputs:
@@ -239,11 +239,20 @@ function a = accel_policy(vn, sn, rel_v, alpha, tau)
 % Output:
 %   a     = commanded acceleration [m/s^2]
 
-    % Standard constant time-gap policy (doesn't yet use rel_v explicitly)
-    a = alpha * (sn - vn * tau);
+    % Maintain constant speed, time gap = [3, 6] 
+    % Accelerate, time gap = (6, 60)
+    % Decelerate, time gap = (0, 3)
+    
+    time_gap = sn / vn % time gap = space gap / ego speed
 
-    % 🔧 Note: rel_v is here so you can easily extend the law later
-    % e.g., a = alpha*(sn - vn*tau) + beta*rel_v
+    if time_gap >= 3 & time_gap <= 6
+        % Maintain constant speed
+        a = 0
+    else
+        % Standard constant time-gap policy
+        a = alpha * (sn - vn * tau);
+    end
+    
 end
 
 
@@ -294,7 +303,7 @@ function [time_steps, space_gaps, ego_speeds, lead_speeds] = simulate_car_follow
         v_lead = lead_speeds(k-1);
 
         rel_speed = v_lead - v_prev;                 % ds/dt
-        acc       = accel_policy(v_prev, s_prev, rel_speed, alpha, tau);
+        acc       = wead_controller_accel_policy(v_prev, s_prev, rel_speed, alpha, tau);
 
         ego_speeds(k) = v_prev + dt * acc;
         space_gaps(k) = s_prev + dt * rel_speed;
