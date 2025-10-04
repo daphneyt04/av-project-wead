@@ -227,34 +227,50 @@ function a = accel_trace(v_ego, s, alpha, tau)
 end
 
 function a = wead_controller_accel_policy(vn, sn, rel_v, alpha, tau)
-%ACCEL_POLICY Commanded acceleration based on ego speed, gap, and relative speed.
-%
-% Inputs:
-%   vn    = ego (follower) speed [m/s]
-%   sn    = space gap to leader [m]
-%   rel_v = relative speed (v_lead - v_ego) [m/s]
-%   alpha = controller gain [1/s^2]
-%   tau   = desired time gap [s]
-%
-% Output:
-%   a     = commanded acceleration [m/s^2]
+% Commanded acceleration with safe behavior at (near) standstill and time-gap bands.
+% vn: ego speed [m/s], sn: space gap [m], rel_v: v_lead - vn [m/s]
 
-    % Maintain constant speed, time gap = [3, 6] 
-    % Accelerate, time gap = (6, 60)
-    % Decelerate, time gap = (0, 3)
-    
-    time_gap = sn / vn % time gap = space gap / ego speed
+    % --- constants for standstill behavior (tune as you like) ---
+    v_eps     = 1e-3;   % below this, treat as "stopped"
+    s0_stop   = 2.0;    % desired standstill gap [m]
+    deadband  = 0.5;    % +/- band around s0_stop where we hold [m]
+    a_crawl   = +0.5;   % gentle creep accel when too far at stop [m/s^2]
+    a_holdbrk = -0.5;   % gentle brake/hold when too close at stop [m/s^2]
 
-    if time_gap >= 3 & time_gap <= 6
-        % Maintain constant speed
-        a = 0
+    % ---- sanitize inputs ----
+    if ~isfinite(vn) || ~isfinite(sn)
+        a = 0; return;                 % fail-safe
+    end
+    sn = max(sn, 0);                   % no negative gap
+
+    % ---- standstill / near-standstill branch (avoid divide-by-zero) ----
+    if vn <= v_eps
+        e0 = sn - s0_stop;             % error to standstill gap
+        if     e0 >  deadband
+            a = a_crawl;               % we're too far: creep forward a bit
+        elseif e0 < -deadband
+            a = a_holdbrk;             % we're too close: hold/brake gently
+        else
+            a = 0;                     % within band: hold
+        end
+        return;
+    end
+
+    % ---- normal moving case: compute time gap safely ----
+    time_gap = sn / vn;                % vn > v_eps here, so no div-by-zero
+
+    % ---- banded logic (maintain in [3,6], otherwise proportional toward tau) ----
+    if (time_gap >= 3) && (time_gap <= 6)
+        a = 0;
     else
-        % Standard constant time-gap policy
         a = alpha * (sn - vn * tau);
     end
-    
-end
 
+    % (optional: add damping)
+    % beta = 0.3; a = a + beta * rel_v;
+
+    a = min(max(a, -3.0), 1.5);
+end
 
 function v = piecewise_accel_profile(t, v0, accels, durations)
 % Lead speed from piecewise-constant accelerations.
