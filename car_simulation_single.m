@@ -1,4 +1,4 @@
-%% car_simulation_suite.m
+%% car_simulation_single.m
 % Run many car-following test cases from one file.
 clear; clc;
 
