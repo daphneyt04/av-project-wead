@@ -16,6 +16,13 @@ initial_speed = 15;   % [m/s]
 run_steady_state        = true;
 run_sudden_stop_recover = true;
 run_lead_sudden_slow    = true;
+run_lead_speedup        = true;
+run_lead_stop_hold      = true;
+run_traffic_wave        = true;
+run_cut_in              = true;
+run_cut_out             = true;
+run_lead_dropout        = true;
+run_noise_injection     = true;
 
 % ----------------------- define scenarios -----------------------
 % Each scenario now just builds a speed profile for the lead car
@@ -36,6 +43,58 @@ if run_lead_sudden_slow
     scenarios{end+1} = struct( ...
         "name","Lead: Sudden Slowdown", ...
         "build", @(t) piecewise_accel_profile(t, initial_speed, [-2.5], [4.0]) ...
+    );
+end
+
+if run_lead_speedup
+    scenarios{end+1} = struct( ...
+        "name","Lead: Sudden Speed-Up", ...
+        "build", @(t) piecewise_accel_profile(t, initial_speed, [2.0], [3.0]) ...
+    );
+end
+
+if run_lead_stop_hold
+    scenarios{end+1} = struct( ...
+        "name","Lead: Stop and Hold", ...
+        "build", @(t) piecewise_accel_profile(t, initial_speed, [-3.0, 0.0], [5.0, 10.0]) ...
+    );
+end
+
+if run_traffic_wave
+    scenarios{end+1} = struct( ...
+        "name","Lead: Periodic Traffic Wave", ...
+        "build", @(t) initial_speed + 3*sin(0.3*t) ...
+    );
+end
+
+% (7) Cut-in event
+if run_cut_in
+    scenarios{end+1} = struct( ...
+        "name","Cut-In Event", ...
+        "build", @(t) initial_speed + 0*t, ...
+        "cut_in_event", true ...
+    );
+end
+
+if run_cut_out
+    scenarios{end+1} = struct( ...
+        "name","Cut-Out Event", ...
+        "build", @(t) initial_speed + 0*t, ...
+        "cut_out_event", true ...
+    );
+end
+
+if run_lead_dropout
+    scenarios{end+1} = struct( ...
+        "name","Lead Vehicle Dropout (Sensor Failure)", ...
+        "build", @(t) ((t>10 & t<15)*NaN) + ((t<=10 | t>=15)*initial_speed) ...
+    );
+end
+
+if run_noise_injection
+    scenarios{end+1} = struct( ...
+        "name","Lead: Random Noise", ...
+        "build", @(t) initial_speed + 0.5*randn(size(t)) ...
     );
 end
 
@@ -63,9 +122,25 @@ for s_idx = 1:numel(scenarios)
 
     % --- Multi-Car Simulation Loop for this Scenario ---
     for k = 2:num_steps
-        cars(1).vel = lead_car_speed_profile(k);
+        
+        % Handle NaNs (dropout)
+        if isnan(lead_car_speed_profile(k))
+            cars(1).vel = cars(1).vel; % hold last value
+        else
+            cars(1).vel = lead_car_speed_profile(k);
+        end
         cars(1).pos = cars(1).pos + cars(1).vel * dt;
         
+        % Handle cut-in / cut-out events
+        if isfield(S, "cut_in_event") && S.cut_in_event && abs(t(k)-10) < dt/2
+            cars(5).pos = cars(5).pos - 10; % vehicle cuts in closer
+            fprintf('Cut-in event triggered at t=%.1fs\n', t(k));
+        end
+        if isfield(S, "cut_out_event") && S.cut_out_event && abs(t(k)-20) < dt/2
+            cars(5).pos = cars(5).pos + 20; % vehicle cuts out
+            fprintf('Cut-out event triggered at t=%.1fs\n', t(k));
+        end
+
         for i = 2:num_cars
             ego_car = cars(i);
             lead_car = cars(i-1);
@@ -80,7 +155,9 @@ for s_idx = 1:numel(scenarios)
         pos_history(k, :) = [cars.pos];
         vel_history(k, :) = [cars.vel];
     end
+    
     disp('Simulation for this scenario complete.');
+
 
     % --- Plotting Results for this Scenario ---
     figure('Name', S.name, 'Color', 'w');
