@@ -145,7 +145,7 @@ fprintf('running %d scenarios (alpha=%.3g, tau=%.3g, dt=%.3g, T=%.1f)\n', ...
 for i = 1:numel(scenarios)
     S = scenarios{i};
     [lead_speeds, v0, s0] = S.build(t);
-    [tt, s, v, vl] = simulate_car_following(t, alpha, tau, v0, s0, lead_speeds);
+    [tt, s, v, vl, pos_ego, pos_lead] = simulate_car_following(t, alpha, tau, v0, s0, lead_speeds);
 
     % metrics & logs
     m = compute_metrics(tt, s, v, vl, alpha, tau);
@@ -162,17 +162,40 @@ for i = 1:numel(scenarios)
     % Plot per-scenario
     if PLOT_EACH
         fig = figure('Name', S.name, 'Color', 'w');
-        tiledlayout(3,1);
+        tiledlayout(2,2);
 
-        nexttile; plot(tt, v, tt, vl, '--', 'LineWidth', 1.2);
-        ylabel('Speed (m/s)'); legend('Ego','Lead'); grid on; title(S.name);
-
-        nexttile; plot(tt, s, 'LineWidth', 1.2);
-        ylabel('Space gap (m)'); grid on;
-
-        a_cmd = accel_trace(v, s, alpha, tau);
-        nexttile; plot(tt, a_cmd, 'LineWidth', 1.2);
-        ylabel('Cmd accel (m/s^2)'); xlabel('Time (s)'); grid on;
+        % Plot 1: Position
+        nexttile; 
+        plot(tt, pos_ego, tt, pos_lead, '--', 'LineWidth', 1.2);
+        ylabel('Position (m)'); 
+        legend('Ego','Lead', 'Location', 'northwest'); 
+        grid on; 
+        title(S.name);
+    
+        % Plot 2: Speed
+        nexttile; 
+        plot(tt, v, tt, vl, '--', 'LineWidth', 1.2);
+        ylabel('Speed (m/s)'); 
+        legend('Ego','Lead'); 
+        grid on;
+        
+        % Plot 3: Space Gap
+        nexttile; 
+        plot(tt, s, 'LineWidth', 1.2);
+        ylabel('Space Gap (m)'); 
+        xlabel('Time (s)'); 
+        grid on;
+        
+        % Plot 4: Commanded Acceleration
+        a_cmd = zeros(size(tt));
+        for k=1:numel(tt) % Recalculate acceleration history for plotting
+            a_cmd(k) = wead_controller_accel_policy(v(k), s(k), vl(k), alpha, tau);
+        end
+        nexttile; 
+        plot(tt, a_cmd, 'LineWidth', 1.2);
+        ylabel('Cmd Accel (m/s^2)'); 
+        xlabel('Time (s)'); 
+        grid on;
 
         if SAVE_FIGS
             fn = sprintf('fig_%02d_%s.png', i, sanitize_filename(S.name));
@@ -301,7 +324,7 @@ function v = piecewise_accel_profile(t, v0, accels, durations)
     end
 end
 
-function [time_steps, space_gaps, ego_speeds, lead_speeds] = simulate_car_following( ...
+function [time_steps, space_gaps, ego_speeds, lead_speeds, ego_positions, lead_positions] = simulate_car_following( ...
     time_steps, alpha, tau, initial_ego_speed, initial_space_gap, lead_speeds)
 % Euler integration of the car-following model.
     dt = time_steps(2) - time_steps(1);
@@ -309,9 +332,13 @@ function [time_steps, space_gaps, ego_speeds, lead_speeds] = simulate_car_follow
 
     space_gaps = zeros(1, N);
     ego_speeds = zeros(1, N);
+    ego_positions = zeros(1, N);
+    lead_positions = zeros(1, N);
 
     space_gaps(1) = initial_space_gap;
     ego_speeds(1) = initial_ego_speed;
+    lead_positions(1) = 0;
+    ego_positions(1) = -initial_space_gap;
 
     for k = 2:N
         s_prev = space_gaps(k-1);
@@ -323,5 +350,8 @@ function [time_steps, space_gaps, ego_speeds, lead_speeds] = simulate_car_follow
 
         ego_speeds(k) = v_prev + dt * acc;
         space_gaps(k) = s_prev + dt * rel_speed;
+
+        lead_positions(k) = lead_positions(k-1) + v_lead * dt;
+        ego_positions(k) = ego_positions(k-1) + v_prev * dt;
     end
 end

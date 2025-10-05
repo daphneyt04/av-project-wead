@@ -24,6 +24,7 @@ run_cut_out             = true;
 run_lead_dropout        = true;
 run_noise_injection     = true;
 
+
 % ----------------------- define scenarios -----------------------
 % Each scenario now just builds a speed profile for the lead car
 scenarios = {};
@@ -98,6 +99,10 @@ if run_noise_injection
     );
 end
 
+% --- Create a single figure window and a tab group BEFORE the loop ---
+main_fig = figure('Name', 'Multi-Scenario Simulation Results', 'Color', 'w', 'Position', [100, 100, 1200, 800]);
+tab_group = uitabgroup(main_fig);
+
 % ----------------------- Main Scenario Loop -----------------------
 fprintf('Running %d scenarios...\n', numel(scenarios));
 for s_idx = 1:numel(scenarios)
@@ -114,6 +119,7 @@ for s_idx = 1:numel(scenarios)
     % --- Store History for this Scenario ---
     pos_history = zeros(num_steps, num_cars);
     vel_history = zeros(num_steps, num_cars);
+    accel_history = zeros(num_steps, num_cars - 1);
     pos_history(1, :) = [cars.pos];
     vel_history(1, :) = [cars.vel];
 
@@ -147,9 +153,12 @@ for s_idx = 1:numel(scenarios)
             space_gap = lead_car.pos - ego_car.pos;
             
             accel_cmd = wead_controller_accel_policy(ego_car.vel, space_gap, lead_car.vel, alpha, tau);
-            
+            accel_history(k, i-1) = accel_cmd;
+
             cars(i).vel = ego_car.vel + accel_cmd * dt;
             cars(i).pos = ego_car.pos + ego_car.vel * dt;
+
+            
         end
         
         pos_history(k, :) = [cars.pos];
@@ -160,26 +169,54 @@ for s_idx = 1:numel(scenarios)
 
 
     % --- Plotting Results for this Scenario ---
-    figure('Name', S.name, 'Color', 'w');
-    
-    subplot(2, 1, 1);
-    plot(t, pos_history, 'LineWidth', 1.5);
-    title(['Position vs. Time (' S.name ')']);
-    xlabel('Time (s)');
-    ylabel('Position (m)');
-    grid on;
-    legend(arrayfun(@(n) sprintf('Car %d', n), 1:num_cars, 'UniformOutput', false), 'Location', 'eastoutside');
-    
-    subplot(2, 1, 2);
-    plot(t, vel_history, 'LineWidth', 1.5);
-    title(['Speed vs. Time (' S.name ')']);
-    xlabel('Time (s)');
-    ylabel('Speed (m/s)');
-    grid on;
-    legend(arrayfun(@(n) sprintf('Car %d', n), 1:num_cars, 'UniformOutput', false), 'Location', 'eastoutside');
+    % First, calculate the space gap history
+    space_gap_history = pos_history(:, 1:end-1) - pos_history(:, 2:end);
 
-end % End of main scenario loop
-disp('All scenarios complete.');
+    % Create a new title string with the figure number
+    new_title = sprintf('Figure %d: %s', s_idx, S.name);
+    
+    % Create the tab using the new title
+    scenario_tab = uitab(tab_group, 'Title', new_title);
+    
+    % Direct the tiled layout to the current tab
+    t_layout = tiledlayout(scenario_tab, 2, 2, 'Padding', 'compact', 'TileSpacing', 'compact');
+    
+    % Plot 1: Position vs. Time
+    ax1 = nexttile(t_layout);
+    plot(ax1, t, pos_history, 'LineWidth', 1.5);
+    title(ax1, 'Position');
+    xlabel(ax1, 'Time (s)');
+    ylabel(ax1, 'Position (m)');
+    grid(ax1, 'on');
+
+    % Plot 2: Speed vs. Time
+    ax2 = nexttile(t_layout);
+    plot(ax2, t, vel_history, 'LineWidth', 1.5);
+    title(ax2, 'Speed');
+    xlabel(ax2, 'Time (s)');
+    ylabel(ax2, 'Speed (m/s)');
+    grid(ax2, 'on');
+    legend(ax2, arrayfun(@(n) sprintf('Car %d', n), 1:num_cars, 'UniformOutput', false), 'Location', 'eastoutside');
+
+    % Plot 3: Space Gap vs. Time
+    ax3 = nexttile(t_layout);
+    plot(ax3, t, space_gap_history, 'LineWidth', 1.5);
+    title(ax3, 'Space Gap');
+    xlabel(ax3, 'Time (s)');
+    ylabel(ax3, 'Space Gap (m)');
+    grid(ax3, 'on');
+
+    % Plot 4: Commanded Acceleration vs. Time
+    ax4 = nexttile(t_layout);
+    plot(ax4, t, accel_history, 'LineWidth', 1.5); % Assumes you stored accel_history
+    title(ax4, 'Commanded Acceleration');
+    xlabel(ax4, 'Time (s)');
+    ylabel(ax4, 'Acceleration (m/s^2)');
+    grid(ax4, 'on');
+    legend(ax4, arrayfun(@(n) sprintf('Car %d', n), 2:num_cars, 'UniformOutput', false), 'Location', 'eastoutside');
+    
+    end % End of main scenario loop
+    disp('All scenarios complete.');
 
 % ----------------------- Helper Functions -----------------------
 function a = wead_controller_accel_policy(vn, sn, lead_v, alpha, tau)
