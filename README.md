@@ -50,4 +50,9 @@ Range for cmd_accel = [-3.0, 1.5] | Can go to -6.0 in specific instances
     - Does controller react if no inputs?
 * 2.10
 
+# Large-Scale Simulations
+To analyze the performance of our controller over a larger scale, we simulated different proportions of a traffic platoon using our ‘WEAD’ controller and the other vehicles using the ‘PROFACC’ controller. We did this with 0%, 25%, 50%, 75%, and 100% of the platoon using our controller. We also simulated the platoon with no vehicles that use our controller to set a baseline for comparison.  
+
+To run our larg-scale simulations, only the largeScaleSim.ipynb file needs to be run. This will provide plots of positions over time, velocities over time, space-gaps over time, and time-gaps over time for all 5 percentages of WEAD controllers. It will also provide a fundamental diagram, a string stability vs. penetration rate graph, and a total energy vs. penetration rate graph with the data from all the simulations.
+
 # AI Usage
